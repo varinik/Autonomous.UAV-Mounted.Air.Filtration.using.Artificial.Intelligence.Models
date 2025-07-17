@@ -6,6 +6,7 @@ import math
 
 #import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.gridspec as gridspec
 import seaborn as sns
 
 import matplotlib
@@ -43,7 +44,7 @@ import math
 SCENE_SIZE = 15
 PLUME_SIZE = 40
 DECAY_FACTOR = 0.9
-NUM_FRAMES = 50
+NUM_FRAMES = 100
 DRONE_STEP = 6
 SEARCH_RADIUS = 6
 DETECTION_THRESHOLD = 5.0  # Lowered for sensitivity
@@ -214,12 +215,20 @@ df = pd.read_csv('circle_path.txt', sep=',', header=None, names=['X', 'Y', 'Z'])
 
 path = df[['X', 'Y', 'Z']].to_numpy()
 
-# print(path)
+# # print(path)
 
+# 
+
+# path = np.linspace([0,0,0], [0,15,15], num=100).astype(int)
 start_pos = path[0]
 
-def source_pos(t):
+def source_pos(t, next=False):
     pos = path[t]
+    if(next == True):
+        next_pos = t + 1
+        if(next_pos>NUM_FRAMES):
+            next_pos = 0
+        return path[next_pos]
     return tuple(np.clip(pos, 0, SCENE_SIZE - 1))
 
 def clamp(val, min_val, max_val):
@@ -308,7 +317,7 @@ def get_source(bit_map, concentrations):
     # reformat input
     # print(final)
     # print(possible)
-    sadf = input()
+    # sadf = input()
     final = final[0]
     # all xs
     x = [final[0],final[3],final[6]]
@@ -359,9 +368,6 @@ def hybrid_pred(his):
     Y_stack = np.hstack([pred_lstm[:, 1].reshape(-1, 1), pred_hmm[:, 1].reshape(-1, 1)])
     Z_stack = np.hstack([pred_lstm[:, 2].reshape(-1, 1), pred_hmm[:, 2].reshape(-1, 1)])
 
-    # pred_x = abs(x_model.predict([X_stack[-1]])[-1])
-    # pred_y = abs(y_model.predict([Y_stack[-1]])[-1])
-    # pred_z = abs(z_model.predict([Z_stack[-1]])[-1])
     pred_x = int(np.round(abs(x_model.predict([X_stack[-1]])[-1])))
     pred_y = int(np.round(abs(y_model.predict([Y_stack[-1]])[-1])))
     pred_z = int(np.round(abs(z_model.predict([Z_stack[-1]])[-1])))
@@ -372,10 +378,6 @@ def hybrid_pred(his):
         np.array([pred_x + 2, pred_y + 2, pred_z + 2], dtype=float),
         np.array([pred_x + 3, pred_y + 3, pred_z + 3], dtype=float)
     ]
-    # xx = x[0]
-    # print("drone1 pos: ", drone_positions_2[0])
-    # print("drone2 pos: ", drone_positions_2[1])
-    # print("drone3 pos: ", drone_positions_2[2])
 
     return drone_positions_2
 
@@ -412,24 +414,25 @@ def update_drone(pos, drone_positions, bit_map, history):
     his.append(pred_source)
     # print("pred_source: ", pred_source)
     print("actual source: ", x0, y0, z0)
-    actual_drone_pos = [
-        pred_source,
-        [pred_source[0] + 2, pred_source[1] + 2, pred_source[2] + 2], 
-        [pred_source[0] + 3, pred_source[1] + 3, pred_source[2] + 3]
-    ]
+    # actual_drone_pos = [
+    #     pred_source,
+    #     [pred_source[0] + 2, pred_source[1] + 2, pred_source[2] + 2], 
+    #     [pred_source[0] + 3, pred_source[1] + 3, pred_source[2] + 3]
+    # ]
+
 
     print("history: ", his)
     predicted = hybrid_pred(his)
     print("predicted: ", predicted)
-    return predicted, actual_drone_pos, pred_source, his
+    return predicted, pred_source, his
 
 
 
 
+graphs = []
 
 def update(frame):
-    global pollution_field, source_positions, drone_readings, bit_map, his, drone_positions
-
+    global pollution_field, source_positions, drone_readings, bit_map, his, drone_positions, graphs
     ax.cla()
     ax.set_facecolor('white')
     ax.set_xlim(0, SCENE_SIZE)
@@ -439,8 +442,8 @@ def update(frame):
     ax.yaxis.label.set_color('black')
     ax.zaxis.label.set_color('black')
     ax.tick_params(colors='black')
-    ax.grid(color='gray', linestyle='--', alpha=0.3)
 
+    ax.grid(color='gray', linestyle='--', alpha=0.3)
     pollution_field *= DECAY_FACTOR
     x0, y0, z0 = source_pos(frame)
     source_positions.append((x0, y0, z0))
@@ -466,12 +469,24 @@ def update(frame):
         xs, ys, zs = zip(*source_positions)
         ax.plot(xs, ys, zs, color='black', linewidth=1.5, alpha=0.7, label='Source Path')
 
-    info = [f'Time step: {frame}', f'Q = {Q_var:.1f}   σ = {sigma_var:.1f}']
-
-    drone_positions, hybrid, pred_source, history = update_drone([x0, y0, z0],drone_positions, bit_map, his)
+    drone_positions, pred_source, history = update_drone([x0, y0, z0],drone_positions, bit_map, his)
     his = history.copy()
-    ax.scatter(*np.array(pred_source), color='orange', s=150, marker='*', label='Pred_Source')
-    # print(hybrid)
+
+    actual_next_pos = source_pos(frame, next=True)
+    cur_source = [x0, y0, z0]
+    print(cur_source, actual_next_pos)
+    first_drone = drone_positions[0]
+    hybrid_error = np.sqrt((actual_next_pos[0] - first_drone[0])**2 + (actual_next_pos[1] - first_drone[1])**2 + (actual_next_pos[2] - first_drone[2])**2)
+
+    info = [
+    f'Time step: {frame}',
+    f'Hybrid Error = {hybrid_error:.3f}',
+    f'Source Prediction = ({his[-1][0]:.1f}, {his[-1][1]:.1f}, {his[-1][2]:.1f})',
+    f'Current Source Position = ({cur_source[0]:.1f}, {cur_source[1]:.1f}, {cur_source[2]:.1f})'
+]
+
+    ax.scatter(*np.array(pred_source), color='orange', s=150, marker='*', label='Pred_Source', alpha=0.5)
+
     drone_positions = np.array(drone_positions)
     for i in range(3):
         x, y, z = drone_positions[i].astype(int)
@@ -480,23 +495,119 @@ def update(frame):
         drone_trails[i].append(drone_positions[i].copy())
 
         trail = np.array(drone_trails[i])
-        ax.plot(trail[:, 0], trail[:, 1], trail[:, 2], color=drone_colors[i], linewidth=1.5, alpha=0.7)
+        ax.plot(trail[:, 0], trail[:, 1], trail[:, 2], color=drone_colors[i], linewidth=1, alpha=0.7)
 
         marker = '^' if pollution_val >= DETECTION_THRESHOLD else 'o'
         ax.scatter(*drone_positions[i], color=drone_colors[i], s=100, marker=marker, label=f'Drone {i+1}')
-        info.append(f'Drone {i+1}: {pollution_val:.1f} {"🔵" if pollution_val >= DETECTION_THRESHOLD else ""}')
+        # info.append(f'Drone {i+1}: {pollution_val:.1f} {"🔵" if pollution_val >= DETECTION_THRESHOLD else ""}')
 
-    print(f"Frame {frame} - Drone readings: {[round(r,1) for r in drone_readings]}")
+    print("drone_trials: ", len(drone_trails[0]))
+    print("source_trials: ", len(source_positions))
+    trails = [drone_trails[0].copy(), drone_trails[1].copy(), drone_trails[2].copy()]
+    # sdf = input()
+    graphs.append([frame, drone_positions.copy(), [x0, y0, z0], pred_source.copy(), trails.copy(), source_positions.copy(), hybrid_error, drone_colors.copy()])
+    print(f"Frame {frame}")
 
     ax.set_xlabel('X (Downwind)')
     ax.set_ylabel('Y (Crosswind)')
     ax.set_zlabel('Z (Altitude)')
-    ax.set_title('3D Pollution Plume with Tracking Drones', color='black')
+    ax.set_title('3D Circle Path', color='black', pad = 35)
     ax.text2D(0.05, 0.95, "\n".join(info), transform=ax.transAxes, fontsize=12, color='black')
 
 bit_map = create_bit_map()
 ani = FuncAnimation(fig, update, frames=NUM_FRAMES, interval=500, blit=False)
 plt.legend()
 plt.show()
-# print(update_drone(path[0], drone_positions, bit_map, []))
-# print(update_drone(path[1], drone_positions, bit_map, []))
+
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import numpy as np
+
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import numpy as np
+
+def plotting(ax, frame, drone_pos, pos_source, pred_source, d_trails, s_trails, hybrid_error, d_colors, first=False):
+    ax.scatter(*pos_source, color='red', s=30, marker='*', label='True Source')
+    ax.scatter(*pred_source, color='orange', s=30, marker='*', label='Predicted Source', alpha=0.6)
+
+    if len(s_trails) > 1:
+        xs, ys, zs = zip(*s_trails)
+        ax.plot(xs, ys, zs, color='black', linewidth=0.8, alpha=0.6, label='Source Path')
+
+    drone_pos = np.array(drone_pos)
+    for i in range(3):
+        trail = np.array(d_trails[i])
+        ax.plot(trail[:, 0], trail[:, 1], trail[:, 2], color=d_colors[i], linewidth=0.8, alpha=0.6)
+        ax.scatter(*drone_pos[i], color=d_colors[i], s=20, marker='o', label=f'Drone {i+1}')
+
+    info = [
+        f'Time Step: {frame}',
+        f'Hybrid Error: {hybrid_error:.3f}',
+        f'Prediction: ({pred_source[0]:.1f}, {pred_source[1]:.1f}, {pred_source[2]:.1f})',
+        f'Actual:    ({pos_source[0]:.1f}, {pos_source[1]:.1f}, {pos_source[2]:.1f})'
+    ]
+    ax.text2D(0.02, 0.85, "\n".join(info), transform=ax.transAxes,
+              fontsize=5, color='black', bbox=dict(facecolor='white', alpha=0.7, edgecolor='none'))
+
+    ax.set_xlabel('X', fontsize=8)
+    ax.set_ylabel('Y', fontsize=8)
+    ax.set_zlabel('Z', fontsize=8)
+    ax.tick_params(axis='both', which='major', labelsize=6)
+    ax.set_box_aspect([10, 8, 6])
+    return ax
+
+# --- Setup ---
+f2, f3, f4 = np.random.choice(
+    np.arange(10, len(graphs) - 1), 3, replace=False
+)
+
+f1 = len(graphs) - 1
+
+fig = plt.figure(figsize=(8.8, 6.0))
+
+gs = gridspec.GridSpec(
+    2, 3,
+    height_ratios=[6, 4],
+    width_ratios=[1, 1, 1],
+    hspace=0.1,
+    wspace=0.1
+)
+
+# Top plot spans full width
+ax_main = fig.add_subplot(gs[0, 0:3], projection='3d')
+frame, drone_pos, pos_source, pred_source, d_trails, s_trails, hybrid_error, d_colors = graphs[f1]
+plotting(ax_main, frame, drone_pos, pos_source, pred_source, d_trails, s_trails, hybrid_error, d_colors, True)
+ax_main.set_title('3D Circle Path', fontsize=10, pad=8)
+
+# Bottom row plots — equal columns
+ax1 = fig.add_subplot(gs[1, 0], projection='3d')
+frame_2, drone_pos_2, pos_source_2, pred_source_2, d_trails_2, s_trails_2, hybrid_error_2, d_colors_2 = graphs[f2]
+plotting(ax1, frame_2, drone_pos_2, pos_source_2, pred_source_2, d_trails_2, s_trails_2, hybrid_error_2, d_colors_2)
+
+print("source: ", len(s_trails_2), len(s_trails))
+print("drones: ", len(d_trails_2[0]), len(d_trails[0]))
+
+ax2 = fig.add_subplot(gs[1, 1], projection='3d')  # center column (col 2)
+frame, drone_pos, pos_source, pred_source, d_trails, s_trails, hybrid_error, d_colors = graphs[f3]
+plotting(ax2, frame, drone_pos, pos_source, pred_source, d_trails, s_trails, hybrid_error, d_colors)
+
+ax3 = fig.add_subplot(gs[1, 2], projection='3d')
+frame, drone_pos, pos_source, pred_source, d_trails, s_trails, hybrid_error, d_colors = graphs[f4]
+plotting(ax3, frame, drone_pos, pos_source, pred_source, d_trails, s_trails, hybrid_error, d_colors)
+
+# Legend (aligned next to top plot)
+handles, labels = ax_main.get_legend_handles_labels()
+fig.legend(
+    handles, labels,
+    loc='upper right',
+    bbox_to_anchor=(0.995, 0.99),
+    fontsize=6,
+    frameon=False
+)
+
+# plt.tight_layout(rect=[0, 0, 1, 0.97])  # leave room for title + legend
+plt.show()
