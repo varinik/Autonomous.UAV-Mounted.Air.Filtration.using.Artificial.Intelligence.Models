@@ -209,7 +209,7 @@ his = []
 
 # Parameters
 
-df = pd.read_csv('circle_path.txt', sep=',', header=None, names=['X', 'Y', 'Z'])
+df = pd.read_csv('helix_path.txt', sep=',', header=None, names=['X', 'Y', 'Z'])
 
 # Extract position columns (X, Y, Z)
 
@@ -511,17 +511,13 @@ def update(frame):
     ax.set_xlabel('X (Downwind)')
     ax.set_ylabel('Y (Crosswind)')
     ax.set_zlabel('Z (Altitude)')
-    ax.set_title('3D Circle Path', color='black', pad = 35)
+    ax.set_title('3D Helical Path', color='black', pad = 35)
     ax.text2D(0.05, 0.95, "\n".join(info), transform=ax.transAxes, fontsize=12, color='black')
 
 bit_map = create_bit_map()
 ani = FuncAnimation(fig, update, frames=NUM_FRAMES, interval=500, blit=False)
 plt.legend()
 plt.show()
-
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import numpy as np
@@ -530,84 +526,85 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import numpy as np
 
-def plotting(ax, frame, drone_pos, pos_source, pred_source, d_trails, s_trails, hybrid_error, d_colors, first=False):
-    ax.scatter(*pos_source, color='red', s=30, marker='*', label='True Source')
-    ax.scatter(*pred_source, color='orange', s=30, marker='*', label='Predicted Source', alpha=0.6)
+def plotting(ax, frame, drone_pos, pos_source, pred_source, d_trails, s_trails, hybrid_error, d_colors, show_legend=False, show_title=False, first=False):
+    # True & Predicted Source
+    ax.scatter(*pos_source, color='red', s=6, marker='*', label='True Source')
+    ax.scatter(*pred_source, color='orange', s=6, marker='*', alpha=0.7, label='Predicted Source')
 
+    # Source Path
     if len(s_trails) > 1:
         xs, ys, zs = zip(*s_trails)
-        ax.plot(xs, ys, zs, color='black', linewidth=0.8, alpha=0.6, label='Source Path')
+        ax.plot(xs, ys, zs, color='black', linewidth=0.5, alpha=0.7, label='Source Path')
 
+    # Drone Trails & Positions
     drone_pos = np.array(drone_pos)
     for i in range(3):
         trail = np.array(d_trails[i])
-        ax.plot(trail[:, 0], trail[:, 1], trail[:, 2], color=d_colors[i], linewidth=0.8, alpha=0.6)
-        ax.scatter(*drone_pos[i], color=d_colors[i], s=20, marker='o', label=f'Drone {i+1}')
+        ax.plot(trail[:, 0], trail[:, 1], trail[:, 2], color=d_colors[i], linewidth=0.5, alpha=0.7)
+        ax.scatter(*drone_pos[i], color=d_colors[i], s=4, marker='o', label=f'Drone {i+1}')
 
+    # Info Text
     info = [
         f'Time Step: {frame}',
         f'Hybrid Error: {hybrid_error:.3f}',
         f'Prediction: ({pred_source[0]:.1f}, {pred_source[1]:.1f}, {pred_source[2]:.1f})',
         f'Actual:    ({pos_source[0]:.1f}, {pos_source[1]:.1f}, {pos_source[2]:.1f})'
     ]
-    ax.text2D(0.02, 0.85, "\n".join(info), transform=ax.transAxes,
-              fontsize=5, color='black', bbox=dict(facecolor='white', alpha=0.7, edgecolor='none'))
+    a = 2.75
+    if first:
+        a = 4
+    ax.text2D(0.01, 0.75, "\n".join(info), transform=ax.transAxes,
+              fontsize=a, color='black',
+              bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', boxstyle='round,pad=0.2'))
 
-    ax.set_xlabel('X', fontsize=8)
-    ax.set_ylabel('Y', fontsize=8)
-    ax.set_zlabel('Z', fontsize=8)
-    ax.tick_params(axis='both', which='major', labelsize=6)
-    ax.set_box_aspect([10, 8, 6])
-    return ax
+    # Axis Labels
+    ax.set_xlabel('X', fontsize=4, labelpad=-13)
+    ax.set_ylabel('Y', fontsize=4, labelpad=-13)
+    ax.set_zlabel('Z', fontsize=4, labelpad=-13)
 
-# --- Setup ---
-f2, f3, f4 = np.random.choice(
-    np.arange(10, len(graphs) - 1), 3, replace=False
-)
+    # Tick Labels Closer
+    ax.tick_params(axis='x', pad=-6, labelsize=3)
+    ax.tick_params(axis='y', pad=-6, labelsize=3)
+    ax.tick_params(axis='z', pad=-6, labelsize=3)
 
+    # Grid and Aspect
+    ax.grid(True, linewidth=0.0001, linestyle='--', alpha=0.5)
+    ax.set_box_aspect([8, 10, 8])  # Taller aspect
+
+    # Title
+    if show_title:
+        ax.set_title('3D Helical Path', fontsize=5, pad=2)
+
+    # Legend
+    if show_legend:
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles, labels,
+                  loc='center left',
+                  bbox_to_anchor=(1.3, 0.5),
+                  fontsize=4, frameon=False,
+                  borderpad=0.2, labelspacing=0.2)
+
+# --- Setup (example random indices) ---
+f2, f3, f4 = np.random.choice(np.arange(10, len(graphs) - 1), 3, replace=False)
 f1 = len(graphs) - 1
 
-fig = plt.figure(figsize=(8.8, 6.0))
+# --- Plot Layout ---
+fig = plt.figure(figsize=(2.3, 3.5), dpi=300)
+gs = gridspec.GridSpec(2, 3, height_ratios=[3.5, 3], width_ratios=[1, 1, 1], hspace=0.02, wspace=0.02)
 
-gs = gridspec.GridSpec(
-    2, 3,
-    height_ratios=[6, 4],
-    width_ratios=[1, 1, 1],
-    hspace=0.1,
-    wspace=0.1
-)
-
-# Top plot spans full width
+# Top: Main graph
 ax_main = fig.add_subplot(gs[0, 0:3], projection='3d')
 frame, drone_pos, pos_source, pred_source, d_trails, s_trails, hybrid_error, d_colors = graphs[f1]
-plotting(ax_main, frame, drone_pos, pos_source, pred_source, d_trails, s_trails, hybrid_error, d_colors, True)
-ax_main.set_title('3D Circle Path', fontsize=10, pad=8)
+plotting(ax_main, frame, drone_pos, pos_source, pred_source, d_trails, s_trails, hybrid_error, d_colors,
+         show_legend=True, show_title=True, first=True)
 
-# Bottom row plots — equal columns
-ax1 = fig.add_subplot(gs[1, 0], projection='3d')
-frame_2, drone_pos_2, pos_source_2, pred_source_2, d_trails_2, s_trails_2, hybrid_error_2, d_colors_2 = graphs[f2]
-plotting(ax1, frame_2, drone_pos_2, pos_source_2, pred_source_2, d_trails_2, s_trails_2, hybrid_error_2, d_colors_2)
+# Bottom: 3 small snapshots
+for idx, f in enumerate([f2, f3, f4]):
+    ax = fig.add_subplot(gs[1, idx], projection='3d')
+    frame, drone_pos, pos_source, pred_source, d_trails, s_trails, hybrid_error, d_colors = graphs[f]
+    plotting(ax, frame, drone_pos, pos_source, pred_source, d_trails, s_trails, hybrid_error, d_colors)
 
-print("source: ", len(s_trails_2), len(s_trails))
-print("drones: ", len(d_trails_2[0]), len(d_trails[0]))
+# Adjust layout for legend space
+plt.subplots_adjust(left=0.01, right=0.86, top=0.96, bottom=0.04)
 
-ax2 = fig.add_subplot(gs[1, 1], projection='3d')  # center column (col 2)
-frame, drone_pos, pos_source, pred_source, d_trails, s_trails, hybrid_error, d_colors = graphs[f3]
-plotting(ax2, frame, drone_pos, pos_source, pred_source, d_trails, s_trails, hybrid_error, d_colors)
-
-ax3 = fig.add_subplot(gs[1, 2], projection='3d')
-frame, drone_pos, pos_source, pred_source, d_trails, s_trails, hybrid_error, d_colors = graphs[f4]
-plotting(ax3, frame, drone_pos, pos_source, pred_source, d_trails, s_trails, hybrid_error, d_colors)
-
-# Legend (aligned next to top plot)
-handles, labels = ax_main.get_legend_handles_labels()
-fig.legend(
-    handles, labels,
-    loc='upper right',
-    bbox_to_anchor=(0.995, 0.99),
-    fontsize=6,
-    frameon=False
-)
-
-# plt.tight_layout(rect=[0, 0, 1, 0.97])  # leave room for title + legend
 plt.show()
